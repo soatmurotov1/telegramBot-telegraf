@@ -304,18 +304,30 @@ export class BotUpdate {
           adminId,
           `
           🆕 <b>Yangi foydalanuvchi</b>
+
+
+          👤 Ism: ${user.name}
+          🎂 Yosh: ${user.age}
+          📞 Telefon: ${user.phone}
+          🌍 Viloyat: ${user.region}
+          🏘️ Tuman: ${user.district}
+          `,
+          { parse_mode: 'HTML' }
+        )
+      }
+
+      await ctx.reply(
+                 `
+          📋 <b>Sizning malumotlaringiz</b>
           
           👤 Ism: ${user.name}
           🎂 Yosh: ${user.age}
           📞 Telefon: ${user.phone}
           🌍 Viloyat: ${user.region}
           🏘️ Tuman: ${user.district}
-`,
-          { parse_mode: 'HTML' }
-        )
-      }
-
-      await ctx.reply("✅ Ma'lumotlaringiz saqlandi. Rahmat!")
+          `, 
+          {parse_mode: 'HTML'}
+      )
       await this.redis.deleteSession(userId)
     }
   }
