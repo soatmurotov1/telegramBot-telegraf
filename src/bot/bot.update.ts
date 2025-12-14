@@ -4,12 +4,9 @@ import { PrismaService } from 'src/prisma/prisma.service';
 import { RedisService } from 'src/redis/redis.service';
 import { Context, Markup } from 'telegraf';
 
-interface UserSession {
-  step: string
-  data: any
-}
 
-const sessions = new Map<number, UserSession>()
+
+
 const REGIONS: Record<string, string[]> = {
   Andijon: [
     'Andijon',
@@ -120,6 +117,7 @@ const REGIONS: Record<string, string[]> = {
   ],
   Surxondaryo: [
     'Termiz sh.',
+    'Angor',
     'Bandixon',
     'Boysun',
     'Denov',
@@ -178,15 +176,27 @@ const REGIONS: Record<string, string[]> = {
     'Kegeyli',
     "Mo'ynoq",
     "Qorao'zak",
+    "Qaniko'l",
     'Shumanay',
     "Taxtako'pir",
     'Taxiatosh',
+    "Qo'ngirot",
+    "To'rtko'l",
+    "Xo'jayli",
   ],
-};
+}
 
-const REQUIRED_CHANNELS = [
-  { name: "Toward Coder", url: "https://t.me/toward_coder" },
-  { name: "Yapon tili", url: "https://t.me/japanse_najot_talim" },
+
+const ADMIN_IDS: number[] = (process.env.ADMIN_IDS || '').split(',').map((id) => Number(id.trim())).filter(Boolean)
+interface Channel { 
+  name: string
+  username: string 
+}
+
+
+const CHANNELS: Channel[] = [
+  { name: "Toward Coder", username: "@toward_coder" },
+  { name: "Japanse Najot Talim", username: "@japanse_najot_talim" }
 ]
 
 @Injectable()
@@ -194,157 +204,172 @@ const REQUIRED_CHANNELS = [
 export class BotUpdate {
   constructor(
     private prisma: PrismaService,
-    private redisService: RedisService,
+    private redis: RedisService
   ) {}
+
+  private async checkSubscriptions( ctx: Context, userId: number ): Promise<Channel[]> {
+    const notSubscribed: Channel[] = []
+
+    for (const channel of CHANNELS) {
+      try {
+        const member = await ctx.telegram.getChatMember(
+          channel.username,
+          userId
+        )
+
+        if (!["member", "administrator", "creator"].includes(member.status)) {
+          notSubscribed.push(channel) 
+        }
+      } catch (e) {
+        notSubscribed.push(channel)
+      }
+    }
+    return notSubscribed
+  }
 
   @Start()
   async start(@Ctx() ctx: Context) {
-    const userId = ctx.from?.id
-    if (!userId) {
+    const userId = ctx.from?.id 
+    if (!userId) 
+    return
+    const notSubscribed = await this.checkSubscriptions(ctx, userId) 
+
+    if (notSubscribed.length > 0) {
+      const buttons = notSubscribed.map((c) =>Markup.button.url( c.name,
+      `https://t.me/${c.username.replace("@", "")}`
+        )
+      )
+
+      await ctx.reply(
+        "Quyidagi kanallarga obuna bo'ling:",
+        Markup.inlineKeyboard( [...buttons, Markup.button.callback("✅ Tekshirish", "check")], { columns: 1 })
+      )
       return
     }
 
-    const channelButtons = REQUIRED_CHANNELS.map((c) =>
-      Markup.button.url(c.name, c.url),
-    )
-    const checkButton = Markup.button.callback(
-      "Obunani tekshirish ✅",
-      "check"
-    )
-
-    await ctx.reply(
-      "Quyidagi kanallarga obuna bo'ling",
-      Markup.inlineKeyboard([...channelButtons, checkButton], { columns: 1 })
-    )
+    await this.redis.setSession(userId, { step: "ask_name", data: {} })
+    await ctx.reply("Ismingizni kiriting:")
   }
 
   @On("callback_query")
   async onCallback(@Ctx() ctx: Context) {
     const userId = ctx.from?.id
-    const callbackQuery = ctx.update?.["callback_query"]
-    if (!userId || !callbackQuery || !('data' in callbackQuery)) {
+    const data = ctx.callbackQuery?.["data"]
+    if (!userId || !data) 
+      return
+
+    if (data === "check") {
+      const notSubscribed = await this.checkSubscriptions(ctx, userId)
+      if (notSubscribed.length > 0) {
+        await ctx.answerCbQuery("❌ Hali hamma kanalga obuna bo'lmadingiz")
+        return
+      }
+
+      await this.redis.setSession(userId, { step: "ask_name", data: {} })
+      await ctx.reply("✅ Rahmat! Ismingizni kiriting:")
       return
     }
 
-    let session = await this.redisService.getSession(userId)
+    const session = await this.redis.getSession(userId)
+    if (!session) return
 
-    if (callbackQuery.data === "check") {
-      session = { step: 'ask_name', data: {} }
-      await this.redisService.setSession(userId, session)
-      await ctx.reply("Iltimos, ismingizni kiriting:")
-      return
-    }
+    if (session.step === 'region') {
+      const districts = REGIONS[data]
+      if (!districts) {
+        await ctx.answerCbQuery("Noto'g'ri viloyat tanlandi")
+        return
+      }
 
-    if (!session) {
-      return
-    }
-    if (session.step === "region") {
-      session.data.region = callbackQuery.data
+      session.data.region = data
       session.step = "district"
-      await this.redisService.setSession(userId, session)
-      const districts = REGIONS[session.data.region] || []
+      await this.redis.setSession(userId, session)
+
       await ctx.editMessageText(
         "Tumanni tanlang:",
-        Markup.inlineKeyboard(
-          districts.map((d) => Markup.button.callback(d, d)),
-          { columns: 1 }
-        )
+        Markup.inlineKeyboard(districts.map((d) => Markup.button.callback(d, d)), { columns: 1 })
       )
       return
-    } else if (session.step === "district") {
-      session.data.district = callbackQuery.data
-      this.prisma.user.create({ data: session.data }).catch(console.error)
+    }
+    console.log("ADMIN_IDS:", ADMIN_IDS)
 
-      await ctx.reply(
-        `
-        📋 <b>Sizning ma'lumotlaringiz:</b>
+    if (session.step === "district") {
+      session.data.district = data 
 
-        👤 Foydalanuvchi: ${ctx.from.username ? '@' + ctx.from.username : ctx.from.first_name}
-        👨‍💼 Ism: ${session.data.name}
-        🎂 Yosh: ${session.data.age} yosh
-        📞 Telefon: ${session.data.phone}
-        🌐 Viloyat: ${session.data.region}
-        🏘️ Tuman: ${session.data.district}
-        `,
-        { parse_mode: 'HTML' },
-      )
-      await this.redisService.deleteSession(userId)
+      const user = await this.prisma.user.create({
+        data: session.data
+      })
+
+      for (const adminId of ADMIN_IDS) {
+        await ctx.telegram.sendMessage(
+          adminId,
+          `
+          🆕 <b>Yangi foydalanuvchi</b>
+          
+          👤 Ism: ${user.name}
+          🎂 Yosh: ${user.age}
+          📞 Telefon: ${user.phone}
+          🌍 Viloyat: ${user.region}
+          🏘️ Tuman: ${user.district}
+`,
+          { parse_mode: 'HTML' }
+        )
+      }
+
+      await ctx.reply("✅ Ma'lumotlaringiz saqlandi. Rahmat!")
+      await this.redis.deleteSession(userId)
     }
   }
 
   @On("message")
   async onMessage(@Ctx() ctx: Context) {
     const userId = ctx.from?.id 
-    if (!userId) {
-      return 
-    }
-    let session = await this.redisService.getSession(userId)
-    if (!session) { 
-      return 
-    }
+    if (!userId) return
 
-    const text = ctx.message?.["text"] 
+    const session = await this.redis.getSession(userId)
+    if (!session) return 
+
+    const text = ctx.message?.["text"]  
     const contact = ctx.message?.["contact"] 
 
     switch (session.step) {
       case "ask_name":
-        if (!text) return ctx.reply("Iltimos, ismingizni yozing:")
-        session.data.name = text 
-        session.step = "ask_age"
-        await this.redisService.setSession(userId, session)
-        await ctx.reply("Yoshingizni kiriting:")
+      if (!text) 
+      return
+      session.data.name = text
+      session.step = "ask_age"
+      await this.redis.setSession(userId, session)
+      await ctx.reply("Yoshingizni kiriting:", Markup.removeKeyboard())
+    break
+
+case "ask_age":
+    const age = Number(text)
+    if (isNaN(age)) {
+        await ctx.reply('Yoshingizni raqam bilan kiriting', Markup.removeKeyboard())
         return
+    }
+    session.data.age = age
+    session.step = "ask_phone"
+    await this.redis.setSession(userId, session)
+    await ctx.reply(
+        "Telefon raqamingizni yuboring:",
+        Markup.keyboard([Markup.button.contactRequest('📞 Raqamni yuborish')]).resize().oneTime()
+    )
+    break
 
-      case "ask_age": {
-        const age = parseInt(text ?? "")
-        if (isNaN(age)) {
-          await ctx.reply("Iltimos, yoshingizni raqam bilan kiriting:")
-          return
-        }
-        session.data.age = age
-        session.step = "ask_phone"
-        await this.redisService.setSession(userId, session)
-        await ctx.reply(
-          "Telefon raqamingizni yuboring:",
-          Markup.keyboard([Markup.button.contactRequest("📞 Raqamni yuborish")]).resize().oneTime()
-        )
-        return
-      }
+case "ask_phone":
+    session.data.phone = contact?.phone_number || text
+    session.step = "region"
+    await this.redis.setSession(userId, session)
 
-      case "ask_phone": {
-        if (contact) {
-          session.data.phone = contact.phone_number
-        } else if (text) {
-          session.data.phone = text
-        } else {
-          await ctx.reply("Iltimos, telefon raqamingizni yuboring:")
-          return
-        }
-
-        session.step = "region"
-        await this.redisService.setSession(userId, session)
-        await ctx.reply('Viloyatingizni tanlang:', {
-          reply_markup: {
-            remove_keyboard: true,
-          }
-        })
-
-        await ctx.reply(
-          "Viloyatingizni tanlang:",
-          Markup.inlineKeyboard(
-            Object.keys(REGIONS).map((region) =>
-              Markup.button.callback(region, region)
-            ),
+    await ctx.reply(
+        "Viloyatingizni tanlang:",
+        Markup.inlineKeyboard(
+            Object.keys(REGIONS).map((r) => Markup.button.callback(r, r)),
             { columns: 1 }
-          )
         )
+    )
+    break
 
-        return
-      }
-
-      case 'region':
-      case 'district':
-        break
     }
   }
 }
