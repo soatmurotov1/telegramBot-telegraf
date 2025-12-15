@@ -273,7 +273,7 @@ export class BotUpdate {
     const session = await this.redis.getSession(userId)
     if (!session) return
 
-    if (session.step === 'region') {
+    if (session.step === "region") {
       const districts = REGIONS[data]
       if (!districts) {
         await ctx.answerCbQuery("Noto'g'ri viloyat tanlandi")
@@ -293,43 +293,50 @@ export class BotUpdate {
     console.log("ADMIN_IDS:", ADMIN_IDS)
 
     if (session.step === "district") {
-      session.data.district = data 
+    session.data.district = data 
 
-      const user = await this.prisma.user.create({
+    const user = await this.prisma.user.create({
         data: session.data
-      })
+    })
 
-      for (const adminId of ADMIN_IDS) {
+    const telegramUser = ctx.from
+    const telegramName = telegramUser.username ? `@${telegramUser.username}`
+    : `${telegramUser.first_name || ""} ${telegramUser.last_name || ""}`.trim()
+
+    for (const adminId of ADMIN_IDS) {
         await ctx.telegram.sendMessage(
-          adminId,
-          `
-          🆕 <b>Yangi foydalanuvchi</b>
+            adminId,
+            `
+            🆕 <b>Yangi foydalanuvchi</b>
 
-
-          👤 Ism: ${user.name}
-          🎂 Yosh: ${user.age}
-          📞 Telefon: ${user.phone}
-          🌍 Viloyat: ${user.region}
-          🏘️ Tuman: ${user.district}
-          `,
-          { parse_mode: 'HTML' }
+            👤 Ism: ${user.name}
+            🎂 Yosh: ${user.age}
+            📞 Telefon: ${user.phone}
+            🌍 Viloyat: ${user.region}
+            🏘️ Tuman: ${user.district}
+            🆔 Telegram: ${telegramName}
+            `,
+            { parse_mode: "HTML" }
         )
-      }
-
-      await ctx.reply(
-                 `
-          📋 <b>Sizning malumotlaringiz</b>
-          
-          👤 Ism: ${user.name}
-          🎂 Yosh: ${user.age}
-          📞 Telefon: ${user.phone}
-          🌍 Viloyat: ${user.region}
-          🏘️ Tuman: ${user.district}
-          `, 
-          {parse_mode: 'HTML'}
-      )
-      await this.redis.deleteSession(userId)
     }
+
+    await ctx.reply(
+        `
+        📋 <b>Sizning malumotlaringiz</b>
+
+        👤 Ism: ${user.name}
+        🎂 Yosh: ${user.age}
+        📞 Telefon: ${user.phone}
+        🌍 Viloyat: ${user.region}
+        🏘️ Tuman: ${user.district}
+        🆔 Telegram: ${telegramName}
+        `, 
+        { parse_mode: "HTML"}
+    )
+
+    await this.redis.deleteSession(userId)
+}
+
   }
 
   @On("message")
@@ -346,7 +353,7 @@ export class BotUpdate {
     switch (session.step) {
       case "ask_name":
       if (!text) 
-      return
+        return
       session.data.name = text
       session.step = "ask_age"
       await this.redis.setSession(userId, session)
