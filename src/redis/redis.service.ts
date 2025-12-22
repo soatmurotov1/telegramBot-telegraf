@@ -1,12 +1,17 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
   private redis: Redis
-
+  constructor(private readonly configService: ConfigService) {}
   onModuleInit() {
-    this.redis = new Redis({ host: '127.0.0.1', port: 6379 })
+    const redisUrl = this.configService.get('REDIS_URL')
+    if (!redisUrl) {
+      throw new Error('REDIS_URL env variable is not set')
+    }
+    this.redis = new Redis(redisUrl)
   }
   onModuleDestroy() {
     this.redis.disconnect()
@@ -18,8 +23,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
   async getSession(userId: number) {
     const data = await this.redis.get(`session:${userId}`)
-    if (!data) 
-        return null
+    if (!data) {
+      return null
+    }
     return JSON.parse(data)
   }
 
