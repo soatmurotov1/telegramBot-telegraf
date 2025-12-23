@@ -184,8 +184,8 @@ const REGIONS: Record<string, string[]> = {
   ],
 }
 
-const ADMIN_IDS: number[] = (process.env.ADMIN_IDS || '')
-  .split(',')
+const ADMIN_IDS: number[] = (process.env.ADMIN_IDS || "")
+  .split(",")
   .map((id) => Number(id.trim()))
   .filter(Boolean)
 
@@ -194,9 +194,9 @@ interface Channel {
   username: string
 }
 const CHANNELS: Channel[] = [
-  { name: 'Toward Coder', username: '@toward_coder' },
-  { name: 'Japanese Najot Talim', username: '@japanse_najot_talim' },
-];
+  { name: "Toward Coder", username: "@toward_coder" },
+  { name: "Japanese Najot Talim", username: "@japanse_najot_talim" }
+]
 
 @Injectable()
 @Update()
@@ -204,7 +204,7 @@ export class BotUpdate {
   constructor(
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
-    private readonly testService: TestService,
+    private readonly testService: TestService
   ) {}
 
   private async checkSubscriptions( ctx: Context, userId: number): Promise<Channel[]> {
@@ -213,7 +213,7 @@ export class BotUpdate {
       try {
         const member = await ctx.telegram.getChatMember(
           channel.username,
-          userId,
+          userId
         )
         if (!["member", "administrator", "creator"].includes(member.status)) {
           notSubscribed.push(channel)
@@ -228,7 +228,9 @@ export class BotUpdate {
   @Start()
   async start(@Ctx() ctx: Context) {
     const userId = ctx.from?.id
-    if (!userId) return
+    if (!userId) {
+      return
+    }
 
     const notSubscribed = await this.checkSubscriptions(ctx, userId);
     if (notSubscribed.length > 0) {
@@ -238,7 +240,7 @@ export class BotUpdate {
           `https://t.me/${c.username.replace('@', "")}`
         )
       ])
-      return await ctx.reply(
+      await ctx.reply(
         "Davom etish uchun quyidagi kanallarga obuna bo'ling:",
         Markup.inlineKeyboard([
           ...buttons,
@@ -248,10 +250,7 @@ export class BotUpdate {
     }
 
     await this.redis.setSession(userId, { step: 'ask_name', data: {} })
-    return await ctx.reply(
-      "Xush kelibsiz! Ismingizni kiriting:",
-      Markup.removeKeyboard()
-    )
+    await ctx.reply("Xush kelibsiz! Ismingizni kiriting:", Markup.removeKeyboard())
   }
 
   @On("callback_query")
@@ -259,31 +258,36 @@ export class BotUpdate {
     const userId = ctx.from?.id
     const query = ctx.callbackQuery as any
     const data = query?.data
-    if (!userId || !data) return
+    if (!userId || !data) {
+      return
+    }
 
     if (data === "check") {
       const notSubscribed = await this.checkSubscriptions(ctx, userId);
       if (notSubscribed.length > 0) {
-        return await ctx.answerCbQuery(
+        await ctx.answerCbQuery(
           "❌ Hali hamma kanalga obuna bo'lmadingiz",
-          { show_alert: true },
+          { show_alert: true }
         )
       }
       await ctx.answerCbQuery('✅ Rahmat!')
       await this.redis.setSession(userId, { step: 'ask_name', data: {} })
-      return await ctx.reply('Ismingizni kiriting:')
+      await ctx.reply('Ismingizni kiriting:')
+      return
     }
 
     const session = await this.redis.getSession(userId)
-    if (!session) return
+    if (!session) {
+      return
+    }
 
     if (session.step === "region") {
       const districts = REGIONS[data]
       if (!districts) return await ctx.answerCbQuery("Xato")
-      session.data.region = data;
+      session.data.region = data
       session.step = "district"
-      await this.redis.setSession(userId, session);
-      return await ctx.editMessageText(
+      await this.redis.setSession(userId, session)
+      await ctx.editMessageText(
         "Tumanni tanlang:",
         Markup.inlineKeyboard(
           districts.map((d) => Markup.button.callback(d, d)),
@@ -291,7 +295,7 @@ export class BotUpdate {
         )
       )
     } else if (session.step === "district") {
-      session.data.district = data;
+      session.data.district = data
       await this.prisma.user.create({
         data: {
           telegramId: BigInt(userId),
@@ -299,7 +303,7 @@ export class BotUpdate {
           age: Number(session.data.age),
           phone: session.data.phone,
           region: session.data.region,
-          district: session.data.district,
+          district: session.data.district
         }
       })
       await ctx.reply(`✅ Rahmat ${session.data.name}, ro'yxatdan o'tdingiz!`)
@@ -320,14 +324,15 @@ export class BotUpdate {
         step: "test_code",
         data: {}
       })
-      return await ctx.reply("Test kodini kiriting:")
+      await ctx.reply("Test kodini kiriting:")
+      return 
     }
+  
     const session = await this.redis.getSession(userId)
-
     if (!session) {
       if (text && text.includes("-")) {
         const result = await this.testService.checkAnswer(userId, text)
-        return await ctx.reply(result)
+        await ctx.reply(result)
       }
       return
     }
@@ -337,49 +342,55 @@ export class BotUpdate {
         session.data.name = text
         session.step = "ask_age"
         await this.redis.setSession(userId, session)
-        return await ctx.reply("Yoshingizni kiriting:")
+        await ctx.reply("Yoshingizni kiriting:")
+          return
 
       case "ask_age":
-        const age = Number(text);
-        if (isNaN(age)) return await ctx.reply("Raqam kiriting:");
+        const age = Number(text)
+        if (isNaN(age)) {
+          await ctx.reply("Raqam kiriting:")
+        }
         session.data.age = age
         session.step = "ask_phone"
         await this.redis.setSession(userId, session)
-        return await ctx.reply(
+        await ctx.reply(
           "Raqamni yuboring:",
           Markup.keyboard([[Markup.button.contactRequest("📞 Yuborish")]])
             .resize()
             .oneTime()
         )
+        return
 
       case "ask_phone":
         session.data.phone = contact?.phone_number || text
         session.step = "region"
         await this.redis.setSession(userId, session)
-        return await ctx.reply(
+        await ctx.reply(
           "Viloyat tanlang:",
           Markup.inlineKeyboard(
             Object.keys(REGIONS).map((r) => Markup.button.callback(r, r)),
             { columns: 2 }
           )
         )
+        return
 
       case "test_code":
-        session.data.code = text;
+        session.data.code = text
         session.step = "admin_test_ans"
         await this.redis.setSession(userId, session)
-        return await ctx.reply('Javoblarni kiriting (absaac...):')
+        await ctx.reply('Javoblarni kiriting (absaac...):')
+        return
 
       case "admin_test_ans":
         session.data.answers = text
         session.step = "admin_test_time"
         await this.redis.setSession(userId, session)
-        return await ctx.reply('Vaqt (2025-12-12 12:12 / 2025-12-12 20:00)')
-        
+        await ctx.reply("Vaqtni kiriting: (2025-12-12 12:12 / 2025-12-12 20:00)")
+        return
       case "admin_test_time":
         try {
-          const times = text.split('/')
-          const start = new Date(times[0].trim());
+          const times = text.split("/")
+          const start = new Date(times[0].trim())
           const end = new Date(times[1].trim())
           const test = await this.testService.createTest(
             session.data.code, 
@@ -390,21 +401,22 @@ export class BotUpdate {
         await this.redis.deleteSession(userId)
         await ctx.reply(`✅ Test yaratildi: ${test.code}`)
         const users = await this.prisma.user.findMany()
-        const broadcastMsg =
+        const broad=
         `<b>Yangi test boshlandi!</b>\n\n` +
-        `Kod: <code>${test.code}</code>\n` +
-        `Tugash vaqti: ${end.toLocaleString()}\n\n` +
+        `Kod: <code>${test.code}</code>\n`+
+        `Boshlanish vaqti: ${test.startTime}`+
+        `Tugash vaqti: ${test.endTime}\n\n` +
         `Javoblarni <code>${test.code}-abcd...</code> ko'rinishida yuboring!`
         for (const u of users) {
           try {
-            await ctx.telegram.sendMessage(Number(u.telegramId), broadcastMsg, { parse_mode: 'HTML' })
+            await ctx.telegram.sendMessage(Number(u.telegramId), broad, { parse_mode: "HTML" })
           } catch (e) {
             console.error(`User ${u.telegramId} botni bloklagan.`)
           }
         }
-        await ctx.reply(`Xabar ${users.length-1} ta foydalanuvchiga yuborildi.`)
-      } catch (e) {
-        console.error("Test yaratishda xato:", e)
+        await ctx.reply(`Xabar ${users.length} ta foydalanuvchiga yuborildi.`)
+      } catch (error) {
+        console.error("Test yaratishda xato:", error)
         await ctx.reply("❌ Xatolik! Vaqt formatini tekshiring (YYYY-MM-DD HH:mm / YYYY-MM-DD HH:mm)")
       }
       break

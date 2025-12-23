@@ -34,17 +34,19 @@ export class TestService {
             return "Test yakunlangan."
         }
 
-        let correctCount = 0
+        let correct = 0
         const correctAnswers = test.answers.toLowerCase()
         const userAns = userAnswers.toLowerCase()
         const checkLen = Math.min(correctAnswers.length, userAns.length)
         for (let i = 0; i < checkLen; i++) {
-            if (correctAnswers[i] === userAns[i]) correctCount++
+            if (correctAnswers[i] === userAns[i]) {
+                correct++
+            }
         }
         return `Test natijasi:\n
         Kod: ${code}
-        To'g'ri: ${correctCount}
-        Xato: ${correctAnswers.length - correctCount}
+        To'g'ri: ${correct-1}
+        Xato: ${correctAnswers.length - correct}
         TOTAL: ${correctAnswers.length} ta`
     }
 }
