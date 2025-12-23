@@ -12,7 +12,7 @@ import { RedisModule } from './redis/redis.module';
     RedisModule,
     TelegrafModule.forRoot({
       token: process.env.BOT_TOKEN!,
-    }),
+    })
   ],
   providers: [PrismaService],
 })
