@@ -8,15 +8,16 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  telegramId BigInt  //@unique 
-  name      String
-  age       Int
-  phone     String
-  region    String
-  district  String
+  id         Int      @id @default(autoincrement())
+  telegramId BigInt   @unique
+  name       String
+  age        Int
+  phone      String
+  region     String
+  district   String
   createdAt DateTime @default(now())
 }
+
 
 model Test {
   id        Int      @id @default(autoincrement())
