@@ -404,7 +404,7 @@ export class BotUpdate {
         const broad=
         `<b>Yangi test boshlandi!</b>\n\n` +
         `Kod: <code>${test.code}</code>\n`+
-        `Boshlanish vaqti: ${test.startTime}`+
+        `Boshlanish vaqti: ${test.startTime}\n\n`+
         `Tugash vaqti: ${test.endTime}\n\n` +
         `Javoblarni <code>${test.code}-abcd...</code> ko'rinishida yuboring!`
         for (const u of users) {
